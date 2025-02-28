@@ -24,7 +24,7 @@ class User(Base):
 class Course(Base):
     __tablename__ = "courses"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String, nullable=False)
     description = Column(Text)
 
@@ -35,12 +35,12 @@ class Course(Base):
 class Post(Base):
     __tablename__ = "posts"
 
-    id = Column(Integer, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)  # ✅ Fix: Use String for UUID
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     author_id = Column(String, ForeignKey("users.id"), nullable=False)  
     preview_md = Column(String, nullable=False)
     content_md = Column(String, nullable=False)
-    created_at = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)  # ✅ Fix: Use DateTime
 
     # Relationships
     course = relationship("Course", back_populates="posts")
@@ -53,7 +53,7 @@ class PostComment(Base):
     __tablename__ = "post_comments"
 
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
-    post_id = Column(Integer, ForeignKey("posts.id"), primary_key=True)
+    post_id = Column(String, ForeignKey("posts.id"), primary_key=True)  # ✅ Fix: Match `Post.id` type
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -66,9 +66,8 @@ class PostLike(Base):
     __tablename__ = "post_likes"
 
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
-    post_id = Column(Integer, ForeignKey("posts.id"), primary_key=True)
+    post_id = Column(String, ForeignKey("posts.id"), primary_key=True)  # ✅ Fix: Match `Post.id` type
 
     # Relationships
     user = relationship("User", back_populates="likes")
     post = relationship("Post", back_populates="likes")
-

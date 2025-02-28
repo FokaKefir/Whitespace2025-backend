@@ -1,3 +1,8 @@
+import os 
+
+os.environ["TESTING"] = "1"
+os.environ["DATABASE_URL"] = "postgresql://myuser:mypassword@localhost:6666/test_database"
+
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -6,8 +11,9 @@ from sqlalchemy.orm import Session
 from app.models import User, Course, Post
 import uuid
 
+def test_check_env():
+    assert os.getenv("TESTING") == "1"
 
-# ✅ Setup Test Database
 @pytest.fixture(scope="function")
 def db_session():
     """Creates a new database session for each test."""
@@ -18,14 +24,12 @@ def db_session():
     Base.metadata.drop_all(bind=engine)  # Clean up after test
 
 
-# ✅ Setup Test Client
 @pytest.fixture(scope="function")
 def client():
     """Creates a FastAPI test client."""
     return TestClient(app)
 
 
-# ✅ Test Creating a User
 def test_create_user(client: TestClient, db_session: Session):
     user_data = {
         "id": str(uuid.uuid4()),
@@ -44,7 +48,6 @@ def test_create_user(client: TestClient, db_session: Session):
     assert data["name"] == user_data["name"]
 
 
-# ✅ Test Creating a Duplicate User (Should Fail)
 def test_create_duplicate_user(client: TestClient, db_session: Session):
     user_data = {
         "id": str(uuid.uuid4()),
@@ -61,9 +64,8 @@ def test_create_duplicate_user(client: TestClient, db_session: Session):
     assert response.status_code == 400
     assert response.json()["detail"] == "Email or Username already exists"
 
-
-# ✅ Test Creating a Course
 def test_create_course(client: TestClient, db_session: Session):
+    
     course_data = {
         "name": "Python Course",
         "description": "Learn Python from scratch."
@@ -75,12 +77,10 @@ def test_create_course(client: TestClient, db_session: Session):
     assert data["name"] == course_data["name"]
     assert data["description"] == course_data["description"]
 
-
-# ✅ Test Creating a Post
 def test_create_post(client: TestClient, db_session: Session):
     # First, create a user
     user_data = {
-        "id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),  # Ensure id is a string UUID
         "email": "postuser@example.com",
         "userName": "postuser",
         "name": "Post User",
@@ -89,7 +89,7 @@ def test_create_post(client: TestClient, db_session: Session):
     }
     user_response = client.post("/create_user", json=user_data)
     assert user_response.status_code == 200
-    user_id = user_response.json()["id"]
+    user_id = user_response.json()["id"]  # This will now be a string UUID
 
     # Then, create a course
     course_data = {
@@ -103,7 +103,7 @@ def test_create_post(client: TestClient, db_session: Session):
     # Now, create a post
     post_data = {
         "course_id": course_id,
-        "author_id": user_id,
+        "author_id": user_id, 
         "preview_md": "Introduction to FastAPI",
         "content_md": "This is a detailed FastAPI tutorial."
     }
