@@ -1,2 +1,3 @@
-SELECT * FROM users;
+DELETE FROM courses;
 
+SELECT * FROM posts;

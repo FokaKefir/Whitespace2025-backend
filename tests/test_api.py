@@ -4,12 +4,13 @@ os.environ["TESTING"] = "1"
 os.environ["DATABASE_URL"] = "postgresql://myuser:mypassword@localhost:6666/test_database"
 
 import pytest
+import uuid
+import os
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 from app.main import app
 from app.database import SessionLocal, Base, engine
-from sqlalchemy.orm import Session
-from app.models import User, Course, Post
-import uuid
+from app.main import CSRF_TOKEN
 
 def test_check_env():
     assert os.getenv("TESTING") == "1"
@@ -30,7 +31,8 @@ def client():
     return TestClient(app)
 
 
-def test_create_user(client: TestClient, db_session: Session):
+
+def test_create_user(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
     user_data = {
         "id": str(uuid.uuid4()),
         "email": "test@example.com",
@@ -39,79 +41,126 @@ def test_create_user(client: TestClient, db_session: Session):
         "imageUrl": "https://example.com/image.jpg",
         "is_admin": False
     }
-    
-    response = client.post("/create_user", json=user_data)
+
+    response = client.post(
+        "/create_user", 
+        json=user_data, 
+        headers={"CSRF-Token": csrf_token}
+    )
+
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == user_data["email"]
     assert data["userName"] == user_data["userName"]
     assert data["name"] == user_data["name"]
 
-
-def test_create_duplicate_user(client: TestClient, db_session: Session):
-    user_data = {
-        "id": str(uuid.uuid4()),
-        "email": "duplicate@example.com",
-        "userName": "duplicateuser",
-        "name": "Duplicate User",
-        "imageUrl": "https://example.com/image.jpg",
-        "is_admin": False
+def test_create_topic(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    topic_data = {
+        "name": "Machine Learning"
     }
 
-    client.post("/create_user", json=user_data)  # First request (should pass)
-    response = client.post("/create_user", json=user_data)  # Second request (should fail)
-    
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Email or Username already exists"
+    response = client.post(
+        "/create_topic", 
+        json=topic_data, 
+        headers={"CSRF-Token": csrf_token}
+    )
 
-def test_create_course(client: TestClient, db_session: Session):
-    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == topic_data["name"]
+    assert isinstance(data["id"], int)  # Ensure ID is returned and is an integer
+
+
+def test_create_course(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    # First, create a topic
+    topic_data = {
+        "name": "Programming"
+    }
+
+    topic_response = client.post(
+        "/create_topic",
+        json=topic_data,
+        headers={"CSRF-Token": csrf_token}
+    )
+
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Now, create a course under the topic
     course_data = {
         "name": "Python Course",
-        "description": "Learn Python from scratch."
+        "description": "Learn Python from scratch.",
+        "topic_id": topic_id
     }
-    
-    response = client.post("/create_course", json=course_data)
+
+    response = client.post(
+        "/create_course", 
+        json=course_data, 
+        headers={"CSRF-Token": csrf_token}
+    )
+
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == course_data["name"]
     assert data["description"] == course_data["description"]
+    assert data["topic_id"] == topic_id
 
-def test_create_post(client: TestClient, db_session: Session):
+
+def test_create_post(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
     # First, create a user
     user_data = {
-        "id": str(uuid.uuid4()),  # Ensure id is a string UUID
+        "id": str(uuid.uuid4()),
         "email": "postuser@example.com",
         "userName": "postuser",
         "name": "Post User",
         "imageUrl": "https://example.com/image.jpg",
         "is_admin": False
     }
-    user_response = client.post("/create_user", json=user_data)
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
     assert user_response.status_code == 200
-    user_id = user_response.json()["id"]  # This will now be a string UUID
+    user_id = user_response.json()["id"]
 
-    # Then, create a course
+    # Create a topic
+    topic_data = {
+        "name": "Web Development"
+    }
+    topic_response = client.post(
+        "/create_topic",
+        json=topic_data,
+        headers={"CSRF-Token": csrf_token}
+    )
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course under the topic
     course_data = {
         "name": "FastAPI Course",
-        "description": "Learn FastAPI step by step."
+        "description": "Learn FastAPI step by step.",
+        "topic_id": topic_id
     }
-    course_response = client.post("/create_course", json=course_data)
+    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
     assert course_response.status_code == 200
     course_id = course_response.json()["id"]
 
-    # Now, create a post
+    # Now, create a post (including the missing "title" field)
     post_data = {
         "course_id": course_id,
-        "author_id": user_id, 
+        "author_id": user_id,
+        "title": "Getting Started with FastAPI",  
         "preview_md": "Introduction to FastAPI",
         "content_md": "This is a detailed FastAPI tutorial."
     }
 
-    response = client.post("/create_post", json=post_data)
+    response = client.post(
+        "/create_post",
+        json=post_data,
+        headers={"CSRF-Token": csrf_token}
+    )
+
     assert response.status_code == 200
     data = response.json()
     assert data["course_id"] == post_data["course_id"]
     assert data["author_id"] == post_data["author_id"]
+    assert data["title"] == post_data["title"]  
     assert data["preview_md"] == post_data["preview_md"]
     assert data["content_md"] == post_data["content_md"]

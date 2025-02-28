@@ -22,6 +22,7 @@ class UserResponse(UserCreate):
 class CourseCreate(BaseModel):
     name: Annotated[str, Field(title="Course Name", min_length=3, max_length=100)]
     description: Annotated[Optional[str], Field(title="Course Description", max_length=500, default=None)]
+    topic_id: Annotated[int, Field(title="Topic ID", description="The ID of the related topic")]
 
 
 class CourseResponse(CourseCreate):
@@ -34,6 +35,7 @@ class CourseResponse(CourseCreate):
 class PostCreate(BaseModel):
     course_id: Annotated[int, Field(title="Course ID", description="ID of the related course")]
     author_id: Annotated[str, Field(title="Author ID", description="User ID of the post author")]
+    title: Annotated[str, Field(title="Title of Post", min_length=3, max_length=100)]
     preview_md: Annotated[str, Field(title="Preview Content", min_length=10, max_length=500)]
     content_md: Annotated[str, Field(title="Post Content", min_length=10, max_length=5000)]
 
@@ -42,9 +44,20 @@ class PostResponse(BaseModel):
     id: str  
     course_id: int
     author_id: str
+    title: str
     preview_md: str
     content_md: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TopicCreate(BaseModel):
+    name: Annotated[str, Field(title="Topic Name", min_length=3, max_length=100)]
+
+class TopicResponse(TopicCreate):
+    id: Annotated[int, Field(title="Topic ID", description="Unique identifier for the topic")]
+
+    model_config = ConfigDict(from_attributes=True)
+
 
