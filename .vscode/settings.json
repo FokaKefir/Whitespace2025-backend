@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "localhost",
+            "driver": "PostgreSQL",
+            "connectString": "postgresql://myuser:mypassword@localhost:6666/mydatabase",
+            "name": "Whitspace SQL"
+        }
+    ]
+}

@@ -1,32 +1,8 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
-from typing import List
-
-# Database connection
-DATABASE_URL = "postgresql://myuser:mypassword@localhost:6666/mydatabase"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# SQLAlchemy Model
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-
-# Pydantic Base Model for response
-class UserResponse(BaseModel):
-    id: int
-    name: str
-    email: str
-
-    class Config:
-        orm_mode = True
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.database import SessionLocal
+from app.models import *
+from app.schemas import *
 
 # FastAPI app
 app = FastAPI()
@@ -39,8 +15,60 @@ def get_db():
     finally:
         db.close()
 
-# Route to fetch users
-@app.get("/users", response_model=List[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    users = db.query(User).all()
-    return users
+
+
+
+@app.post("/create_post", response_model=PostResponse)
+def create_post(post_data: PostCreate, db: Session = Depends(get_db)) -> PostResponse:
+    new_post: Post = Post(
+        course_id=post_data.course_id,
+        author_id=post_data.author_id,
+        preview_md=post_data.preview_md,
+        content_md=post_data.content_md,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(new_post)
+    db.commit()
+    db.refresh(new_post) 
+
+    return new_post
+
+
+@app.post("/create_user", response_model=UserResponse)
+def create_user(user_data: UserCreate, db: Session = Depends(get_db)) -> UserResponse:
+    # Check if email or username already exists
+    existing_user: User | None = db.query(User).filter(
+        (User.email == user_data.email) | (User.userName == user_data.userName)
+    ).first()
+
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email or Username already exists")
+
+    new_user: User = User(
+        email=user_data.email,
+        userName=user_data.userName,
+        name=user_data.name,
+        imageUrl=user_data.imageUrl,
+        is_admin=user_data.is_admin
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)  # Reload the object to get the generated ID
+
+    return new_user
+
+
+@app.post("/create_course", response_model=CourseResponse)
+def create_course(course_data: CourseCreate, db: Session = Depends(get_db)) -> CourseResponse:
+    new_course: Course = Course(
+        name=course_data.name,
+        description=course_data.description
+    )
+
+    db.add(new_course)
+    db.commit()
+    db.refresh(new_course)  # Reload the object to get the generated ID
+
+    return new_course
