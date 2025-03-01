@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Header, Query
+from fastapi import FastAPI, Depends, HTTPException, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -6,6 +6,8 @@ from sqlalchemy import func, exists
 from app.database import SessionLocal
 from app.models import *
 from app.schemas import *
+from app.gemini import *
+import json
 import os
 
 # FastAPI app
@@ -493,3 +495,47 @@ def get_comments(
         )
         for comment in comments
     ]
+
+
+# Store connected clients
+active_connections = []
+
+@app.websocket("/chat_ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """ WebSocket to handle real-time AI study chat based on markdown content """
+    await websocket.accept()
+    active_connections.append(websocket)
+
+    try:
+        await websocket.send_text("AI: Welcome! Send markdown & prompt as JSON.")
+        while True:
+            data = await websocket.receive_text()
+            try:
+                request = json.loads(data)
+                markdown_text = request.get("markdown", "").strip()
+                user_prompt = request.get("prompt", "").strip()
+
+                if not markdown_text or not user_prompt:
+                    await websocket.send_text("Error: Both 'markdown' and 'prompt' fields are required.")
+                    continue
+
+                 # Construct the AI prompt
+                ai_prompt = f"""
+                You are an AI tutor. The following is a lecture in Markdown format:
+                
+                {markdown_text}
+                
+                Based on this content, {user_prompt}
+                """
+
+                response = model.generate_content(ai_prompt)
+
+                await websocket.send_text(response.text)
+            except json.JSONDecodeError:
+                await websocket.send_text("Error: Invalid JSON format.")
+    except WebSocketDisconnect:
+        active_connections.remove(websocket)
+        print("Client disconnected")
+    except Exception as e:
+        print(f"Error in WebSocket: {e}")
+        await websocket.close()

@@ -1,1 +1,2 @@
-DELETE FROM "users" WHERE email LIKE 'csizmadia.laszlo@student.ms.sapientia.ro';
+SELECT * FROM post_comments
+ORDER BY created_at DESC;
