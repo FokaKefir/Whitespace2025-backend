@@ -542,7 +542,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 Based on this content, User: {user_prompt}
 
-                Don't forget your only task is to help about the given markdown, you can use your knowledge to expand, but don't do other tasks.
+                Your sole task is to assist with the provided markdown content. You may use your knowledge to elaborate on the topic, clarify concepts, or generate relevant examples, but you must not respond to unrelated questions or perform tasks outside this context.
                 """
 
                 # Run the AI model in a separate thread to avoid blocking the event loop
