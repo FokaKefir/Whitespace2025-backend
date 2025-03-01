@@ -515,11 +515,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 markdown_text = request.get("markdown", "").strip()
                 user_prompt = request.get("prompt", "").strip()
 
+                # Handle missing fields
                 if not markdown_text or not user_prompt:
                     await websocket.send_text("Error: Both 'markdown' and 'prompt' fields are required.")
                     continue
 
-                 # Construct the AI prompt
+                # Construct the AI prompt
                 ai_prompt = f"""
                 You are an AI tutor. The following is a lecture in Markdown format:
                 
