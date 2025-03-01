@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, exists
+from datetime import datetime, timezone, timedelta
 from app.database import SessionLocal
 from app.models import *
 from app.schemas import *
@@ -79,7 +80,7 @@ def create_post(post_data: PostCreate, db: Session = Depends(get_db)) -> PostAft
         title=post_data.title, 
         preview_md=post_data.preview_md,
         content_md=post_data.content_md,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc) + timedelta(hours=2) 
     )
 
     db.add(new_post)
@@ -420,7 +421,7 @@ def add_comment(comment_data: CommentCreate, user_id: str = Header(..., title="U
         post_id=comment_data.post_id,
         user_id=user_id,
         content=comment_data.content,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc) + timedelta(hours=2) 
     )
 
     db.add(new_comment)
@@ -501,14 +502,20 @@ def get_comments(
 # Store connected clients
 active_connections = []
 
+# Dictionary to store chat history per WebSocket session
+chat_sessions = {}
+
 @app.websocket("/chat_ws")
 async def websocket_endpoint(websocket: WebSocket):
     """ WebSocket to handle real-time AI study chat based on markdown content """
     await websocket.accept()
     active_connections.append(websocket)
 
+    session_id = id(websocket)  # Unique identifier for session
+    chat_sessions[session_id] = []  # Initialize chat history
+
     try:
-        await websocket.send_text("AI: Welcome! Send markdown & prompt as JSON.")
+        await websocket.send_text("Hi! How can I *help* you?")
         while True:
             data = await websocket.receive_text()
             try:
@@ -521,24 +528,36 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text("Error: Both 'markdown' and 'prompt' fields are required.")
                     continue
 
+                # Maintain context (limit last 5 messages)
+                chat_context = "\n".join(chat_sessions[session_id][-5:])
+
                 # Construct the AI prompt
                 ai_prompt = f"""
                 You are an AI tutor. The following is a lecture in Markdown format:
                 
                 {markdown_text}
+
+                Previous chat history:
+                {chat_context}
                 
-                Based on this content, {user_prompt}
+                Based on this content, User: {user_prompt}
+
+                Don't forget your only task is to help about the given markdown, you can use your knowledge to expand, but don't do other tasks.
                 """
 
                 # Run the AI model in a separate thread to avoid blocking the event loop
                 response = await asyncio.to_thread(model.generate_content, ai_prompt)
 
+                # Store conversation
+                chat_sessions[session_id].append(f"User: {user_prompt}")
+                chat_sessions[session_id].append(f"AI: {response.text}")
 
                 await websocket.send_text(response.text)
             except json.JSONDecodeError:
                 await websocket.send_text("Error: Invalid JSON format.")
     except WebSocketDisconnect:
         active_connections.remove(websocket)
+        chat_sessions.pop(session_id, None)  # Remove chat history on disconnect
         print("Client disconnected")
     except Exception as e:
         print(f"Error in WebSocket: {e}")
