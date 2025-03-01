@@ -585,3 +585,69 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
     assert posts_response_limited.status_code == 200
     posts_limited = posts_response_limited.json()
     assert len(posts_limited) == 3
+
+
+def test_comments_api(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test adding, retrieving, and removing comments"""
+
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_response = client.post("/create_topic", json={"name": "AI lambda"}, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course
+    course_response = client.post("/create_course", json={"name": "Deep Learning", "description": "Neural Networks", "topic_id": topic_id}, headers={"CSRF-Token": csrf_token})
+    assert course_response.status_code == 200
+    course_id = course_response.json()["id"]
+
+    # Create a post
+    post_data = {
+        "course_id": course_id,
+        "author_id": user_id,
+        "title": "New AI Breakthrough",
+        "preview_md": "Short description",
+        "content_md": "Longer content"
+    }
+    post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
+    assert post_response.status_code == 200
+    post_id = post_response.json()["id"]
+
+    # Add a comment
+    comment_data = {"post_id": post_id, "content": "Great post!"}
+    comment_response = client.post("/add_comment", json=comment_data, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert comment_response.status_code == 200
+    comment_id = comment_response.json()["id"]
+
+    # Get comments and verify flag
+    get_comments_response = client.get("/get_comments", params={"post_id": post_id}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert get_comments_response.status_code == 200
+    comments = get_comments_response.json()
+    assert len(comments) == 1
+    assert comments[0]["content"] == "Great post!"
+    assert comments[0]["is_written_by_user"] is True
+
+    # Remove the comment
+    remove_comment_response = client.delete("/remove_comment", params={"comment_id": comment_id}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert remove_comment_response.status_code == 200
+
+    # Verify comment was deleted
+    get_comments_response = client.get("/get_comments", params={"post_id": post_id}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert get_comments_response.status_code == 200
+    assert len(get_comments_response.json()) == 0
+
+
+
+

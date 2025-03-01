@@ -71,6 +71,7 @@ class Post(Base):
 class PostComment(Base):
     __tablename__ = "post_comments"
 
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
     post_id = Column(String, ForeignKey("posts.id"), primary_key=True)
     content = Column(Text, nullable=False)

@@ -368,3 +368,68 @@ def get_all_posts(
         )
         for post, like_count, liked_by_user in posts
     ]
+
+
+@app.post("/add_comment", response_model=CommentResponse, dependencies=[Depends(verify_csrf)])
+def add_comment(comment_data: CommentCreate, user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+    """Allows a user to add a comment to a post."""
+
+    # Check if post exists
+    post = db.query(Post).filter(Post.id == comment_data.post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    # Create new comment
+    new_comment = PostComment(
+        post_id=comment_data.post_id,
+        user_id=user_id,
+        content=comment_data.content,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+
+    return CommentResponse(
+        id=new_comment.id,
+        post_id=new_comment.post_id,
+        user_id=new_comment.user_id,
+        content=new_comment.content,
+        created_at=new_comment.created_at,
+        is_written_by_user=True  # Since the user just created it, they must be the author
+    )
+
+
+@app.delete("/remove_comment", dependencies=[Depends(verify_csrf)])
+def remove_comment(comment_id: int = Query(..., title="Comment ID"), user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+    """Allows a user to remove their own comment."""
+
+    comment = db.query(PostComment).filter(PostComment.id == comment_id, PostComment.user_id == user_id).first()
+
+    if not comment:
+        raise HTTPException(status_code=403, detail="Comment not found or you do not have permission to delete it")
+
+    db.delete(comment)
+    db.commit()
+
+    return {"message": "Comment removed successfully"}
+
+
+@app.get("/get_comments", response_model=list[CommentResponse], dependencies=[Depends(verify_csrf)])
+def get_comments(post_id: str = Query(..., title="Post ID"), user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+    """Retrieve all comments for a given post, marking if they are written by the user."""
+
+    comments = db.query(PostComment).filter(PostComment.post_id == post_id).all()
+
+    return [
+        CommentResponse(
+            id=comment.id,
+            post_id=comment.post_id,
+            user_id=comment.user_id,
+            content=comment.content,
+            created_at=comment.created_at,
+            is_written_by_user=(comment.user_id == user_id)  # True if the comment belongs to the user
+        )
+        for comment in comments
+    ]

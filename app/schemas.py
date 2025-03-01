@@ -90,3 +90,16 @@ class TopicWithCoursesResponse(BaseModel):
     courses: List[CourseDetailResponse]  # Updated reference to the new course schema
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CommentCreate(BaseModel):
+    post_id: str
+    content: str
+
+class CommentResponse(BaseModel):
+    id: int
+    post_id: str
+    user_id: str
+    content: str
+    created_at: datetime
+    is_written_by_user: bool  # Flag to check if the comment belongs to the user
