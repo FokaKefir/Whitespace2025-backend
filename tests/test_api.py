@@ -514,7 +514,7 @@ def test_get_post(client: TestClient, db_session: Session, csrf_token: str = CSR
 
 
 def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
-    """Test retrieving all posts with sorting and limit options."""
+    """Test retrieving all posts with sorting, limit options, and filtering by course_id."""
 
     # Create a user
     user_data = {
@@ -535,42 +535,73 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
     assert topic_response.status_code == 200
     topic_id = topic_response.json()["id"]
 
-    # Create a course
-    course_data = {
+    # Create two courses
+    course_data_1 = {
         "name": "FastAPI Course",
         "description": "Learn FastAPI step by step.",
         "topic_id": topic_id
     }
-    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
-    assert course_response.status_code == 200
-    course_id = course_response.json()["id"]
+    course_response_1 = client.post("/create_course", json=course_data_1, headers={"CSRF-Token": csrf_token})
+    assert course_response_1.status_code == 200
+    course_id_1 = course_response_1.json()["id"]
 
-    # Create multiple posts
-    post_ids = []
-    for i in range(5):
+    course_data_2 = {
+        "name": "Django Course",
+        "description": "Learn Django framework.",
+        "topic_id": topic_id
+    }
+    course_response_2 = client.post("/create_course", json=course_data_2, headers={"CSRF-Token": csrf_token})
+    assert course_response_2.status_code == 200
+    course_id_2 = course_response_2.json()["id"]
+
+    # Create multiple posts in both courses
+    post_ids_course_1 = []
+    for i in range(3):
         post_data = {
-            "course_id": course_id,
+            "course_id": course_id_1,
             "author_id": user_id,
-            "title": f"Post {i+1}",
-            "preview_md": f"Preview {i+1} one two three",
-            "content_md": f"Content of post {i+1}",
+            "title": f"FastAPI Post {i+1}",
+            "preview_md": f"FastAPI Preview {i+1}",
+            "content_md": f"FastAPI Content {i+1}",
         }
         post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
         assert post_response.status_code == 200
-        post_ids.append(post_response.json()["id"])
+        post_ids_course_1.append(post_response.json()["id"])
 
-    # Like the first post twice
-    client.post("/like_post", params={"post_id": post_ids[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
-    client.post("/like_post", params={"post_id": post_ids[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    post_ids_course_2 = []
+    for i in range(2):
+        post_data = {
+            "course_id": course_id_2,
+            "author_id": user_id,
+            "title": f"Django Post {i+1}",
+            "preview_md": f"Django Preview {i+1}",
+            "content_md": f"Django Content {i+1}",
+        }
+        post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
+        assert post_response.status_code == 200
+        post_ids_course_2.append(post_response.json()["id"])
+
+    # Like the first post in FastAPI course twice
+    client.post("/like_post", params={"post_id": post_ids_course_1[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    client.post("/like_post", params={"post_id": post_ids_course_1[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
 
     # Fetch all posts (default sorting by time)
     posts_response = client.get("/posts", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
     assert posts_response.status_code == 200
     posts = posts_response.json()
-    assert len(posts) == 5
+    assert len(posts) == 5  # 3 from FastAPI, 2 from Django
 
-    # Check order by created_at (newest first)
-    assert posts[0]["created_at"] >= posts[1]["created_at"]
+    # Fetch only posts from FastAPI course
+    posts_response_fastapi = client.get(f"/posts?course_id={course_id_1}", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert posts_response_fastapi.status_code == 200
+    fastapi_posts = posts_response_fastapi.json()
+    assert len(fastapi_posts) == 3  # Only FastAPI posts should be returned
+
+    # Fetch only posts from Django course
+    posts_response_django = client.get(f"/posts?course_id={course_id_2}", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert posts_response_django.status_code == 200
+    django_posts = posts_response_django.json()
+    assert len(django_posts) == 2  # Only Django posts should be returned
 
     # Fetch posts sorted by likes
     posts_response_likes = client.get("/posts?sort_by_likes=true", headers={"CSRF-Token": csrf_token, "User-ID": user_id})

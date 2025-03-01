@@ -320,6 +320,7 @@ def get_post(
 @app.get("/posts", response_model=list[PostResponse], dependencies=[Depends(verify_csrf)])
 def get_all_posts(
     user_id: str = Header(..., title="User ID"),
+    course_id: Optional[int] = Query(None, description="Filter posts by course ID"),  # New optional filter
     sort_by_likes: bool = Query(False, description="Sort posts by like count"),
     limit: int = Query(None, description="Limit the number of returned posts"),
     db: Session = Depends(get_db)
@@ -328,6 +329,7 @@ def get_all_posts(
     Retrieves posts along with like counts, author names, and whether the user has liked them.
     - Defaults to ordering by `created_at` (newest first).
     - If `sort_by_likes=true`, orders by like count instead.
+    - If `course_id` is provided, only posts from that course are returned.
     - If `limit` is provided, only the first `limit` posts are returned.
     """
 
@@ -352,6 +354,10 @@ def get_all_posts(
         .join(User, User.id == Post.author_id)
         .outerjoin(subquery_like_count, Post.id == subquery_like_count.c.post_id)
     )
+
+    # Apply course_id filter if provided
+    if course_id is not None:
+        query = query.filter(Post.course_id == course_id)
 
     # Sorting logic
     if sort_by_likes:
