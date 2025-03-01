@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, HttpUrl, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, HttpUrl, Field, ConfigDict, field_validator
 from datetime import datetime
 from typing import Annotated, Optional, List
 
@@ -38,7 +38,18 @@ class PostCreate(BaseModel):
     title: Annotated[str, Field(title="Title of Post", min_length=3, max_length=100)]
     preview_md: Annotated[str, Field(title="Preview Content", min_length=10, max_length=500)]
     content_md: Annotated[str, Field(title="Post Content", min_length=10, max_length=5000)]
+    
+    @field_validator("course_id")
+    def validate_course(cls, v):
+        if v <= 0:
+            raise ValueError("Invalid course ID")
+        return v
 
+    @field_validator("author_id")
+    def validate_author(cls, v):
+        if not v or len(v) < 5:
+            raise ValueError("Invalid author ID")
+        return v
 
 class PostAfterCreateResponse(BaseModel):
     id: str  

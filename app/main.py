@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers (including `X-CSRF-Token`)
 )
 
-BLACKLISTED_IPS = ["111.22.236.7", "178.211.139.120", "130.61.85.118"]
+BLACKLISTED_IPS = ["111.22.236.7", "178.211.139.120", "130.61.85.118", "23.94.59.211"]
 
 @app.middleware("http")
 async def block_bad_ips(request, call_next):
@@ -49,8 +49,27 @@ def verify_csrf(csrf_token: str = Header(None)):
     if csrf_token != CSRF_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid CSRF Token")
 
+def validate_id(db: Session, model, field: str, value, error_message: str):
+    """
+    Generic validation function to check if a given ID exists in the database.
+    - `model`: SQLAlchemy model (e.g., Post, User, Course, Topic).
+    - `field`: Column name to check (e.g., "id").
+    - `value`: The value being validated.
+    - `error_message`: The error message to return if not found.
+    """
+    exists = db.query(model).filter(getattr(model, field) == value).first()
+    if not exists:
+        raise HTTPException(status_code=404, detail=error_message)
+    return exists
+
 @app.post("/create_post", response_model=PostAfterCreateResponse, dependencies=[Depends(verify_csrf)])
 def create_post(post_data: PostCreate, db: Session = Depends(get_db)) -> PostAfterCreateResponse:
+    if not db.query(Course).filter(Course.id == post_data.course_id).first():
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    validate_id(db, User, "id", post_data.author_id, "Author not found")
+    validate_id(db, Course, "id", post_data.course_id, "Course not found")
+    
     new_post = Post(
         course_id=post_data.course_id,
         author_id=post_data.author_id,
@@ -95,6 +114,9 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)) -> UserRes
 
 @app.post("/create_course", response_model=CourseResponse, dependencies=[Depends(verify_csrf)])
 def create_course(course_data: CourseCreate, db: Session = Depends(get_db)) -> CourseResponse:
+    
+    validate_id(db, Topic, "id", course_data.topic_id, "Topic not found")
+    
     new_course: Course = Course(
         name=course_data.name,
         description=course_data.description,
@@ -161,6 +183,9 @@ def add_favorite_course(
     db: Session = Depends(get_db)
 ):
     """Add a course to favorites"""
+    
+    validate_id(db, Course, "id", course_id, "Course not found")
+    validate_id(db, User, "id", user_id, "User not found")
 
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
@@ -207,6 +232,8 @@ def remove_favorite_course(
 def get_favorite_courses(user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
     """Returns a list of courses that are favorited by the user, marking them explicitly as favorites."""
     
+    validate_id(db, User, "id", user_id, "User not found")
+
     favorite_courses = db.query(Course).join(FavoriteCourse, Course.id == FavoriteCourse.course_id).filter(
         FavoriteCourse.user_id == user_id
     ).all()
@@ -231,6 +258,9 @@ def like_post(
 ):
     """Allows a user to like a post if they haven't already."""
     
+    validate_id(db, Post, "id", post_id, "Post not found")
+    validate_id(db, User, "id", user_id, "User not found")
+
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID is required")
 
@@ -277,45 +307,29 @@ def remove_like(
 
 
 @app.get("/get_post/{post_id}", response_model=PostResponse, dependencies=[Depends(verify_csrf)])
-def get_post(
-    post_id: str, 
-    db: Session = Depends(get_db), 
-    user_id: str = Header(..., title="User ID")
-) -> PostResponse:
+def get_post(post_id: str, db: Session = Depends(get_db), user_id: str = Header(..., title="User ID")) -> PostResponse:
     """Fetch a post by ID, count likes, check if the user liked it, and return author name."""
     
-    post = (
-        db.query(
-            Post,
-            User.name.label("author_name"),  # Fetch author name
-            func.count(PostLike.user_id).label("like_count"),
-            exists().where(PostLike.post_id == post_id).where(PostLike.user_id == user_id).label("liked_by_user"),
-        )
-        .join(User, User.id == Post.author_id)
-        .outerjoin(PostLike, Post.id == PostLike.post_id)
-        .filter(Post.id == post_id)
-        .group_by(Post.id, User.name)  # Group by post ID and author name
-        .first()
-    )
+    post = validate_id(db, Post, "id", post_id, "Post not found")
 
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+    author = db.query(User.name).filter(User.id == post.author_id).scalar()
+    author_name = author if author else "Unknown User"
 
-    post_data, author_name, like_count, liked_by_user = post
+    like_count = db.query(func.count(PostLike.user_id)).filter(PostLike.post_id == post_id).scalar()
+    liked_by_user = db.query(PostLike).filter(PostLike.post_id == post_id, PostLike.user_id == user_id).first() is not None
 
     return PostResponse(
-        id=post_data.id,
-        course_id=post_data.course_id,
-        author_id=post_data.author_id,
-        author_name=author_name,  # Return author name
-        title=post_data.title,
-        preview_md=post_data.preview_md,
-        content_md=post_data.content_md,
-        created_at=post_data.created_at,
+        id=post.id,
+        course_id=post.course_id,
+        author_id=post.author_id,
+        author_name=author_name,
+        title=post.title,
+        preview_md=post.preview_md,
+        content_md=post.content_md,
+        created_at=post.created_at,
         like_count=like_count,
         liked_by_user=liked_by_user
     )
-
 
 @app.get("/posts", response_model=list[PostResponse], dependencies=[Depends(verify_csrf)])
 def get_all_posts(
@@ -332,6 +346,9 @@ def get_all_posts(
     - If `course_id` is provided, only posts from that course are returned.
     - If `limit` is provided, only the first `limit` posts are returned.
     """
+
+    if course_id:
+        validate_id(db, Course, "id", course_id, "Course not found")
 
     # Subquery for like count
     subquery_like_count = db.query(
@@ -392,10 +409,8 @@ def get_all_posts(
 def add_comment(comment_data: CommentCreate, user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
     """Allows a user to add a comment to a post."""
 
-    # Check if post exists
-    post = db.query(Post).filter(Post.id == comment_data.post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+    validate_id(db, User, "id", user_id, "User not found")
+    validate_id(db, Post, "id", comment_data.post_id, "Post not found")
 
     # Create new comment
     new_comment = PostComment(
@@ -437,6 +452,8 @@ def remove_comment(comment_id: int = Query(..., title="Comment ID"), user_id: st
 @app.get("/get_comments", response_model=list[CommentResponse], dependencies=[Depends(verify_csrf)])
 def get_comments(post_id: str = Query(..., title="Post ID"), user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
     """Retrieve all comments for a given post, marking if they are written by the user."""
+
+    validate_id(db, Post, "id", post_id, "Post not found")
 
     comments = db.query(PostComment).filter(PostComment.post_id == post_id).all()
 
