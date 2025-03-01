@@ -8,6 +8,7 @@ from app.models import *
 from app.schemas import *
 from app.gemini import *
 import json
+import asyncio
 import os
 
 # FastAPI app
@@ -529,7 +530,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 Based on this content, {user_prompt}
                 """
 
-                response = model.generate_content(ai_prompt)
+                # Run the AI model in a separate thread to avoid blocking the event loop
+                response = await asyncio.to_thread(model.generate_content, ai_prompt)
+
 
                 await websocket.send_text(response.text)
             except json.JSONDecodeError:
