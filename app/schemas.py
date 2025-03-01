@@ -55,6 +55,7 @@ class PostResponse(BaseModel):
     id: str
     course_id: int
     author_id: str
+    author_name: str  # Added author name
     title: str
     preview_md: str
     content_md: str

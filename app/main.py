@@ -78,6 +78,7 @@ def create_user(user_data: UserCreate, db: Session = Depends(get_db)) -> UserRes
         raise HTTPException(status_code=400, detail="Email or Username already exists")
 
     new_user: User = User(
+        id=user_data.id,
         email=user_data.email,
         userName=user_data.userName,
         name=user_data.name,
@@ -281,32 +282,40 @@ def get_post(
     db: Session = Depends(get_db), 
     user_id: str = Header(..., title="User ID")
 ) -> PostResponse:
-    """Fetch a post by ID, count likes, and check if the user liked it."""
+    """Fetch a post by ID, count likes, check if the user liked it, and return author name."""
     
-    post = db.query(Post).filter(Post.id == post_id).first()
-    
+    post = (
+        db.query(
+            Post,
+            User.name.label("author_name"),  # Fetch author name
+            func.count(PostLike.user_id).label("like_count"),
+            exists().where(PostLike.post_id == post_id).where(PostLike.user_id == user_id).label("liked_by_user"),
+        )
+        .join(User, User.id == Post.author_id)
+        .outerjoin(PostLike, Post.id == PostLike.post_id)
+        .filter(Post.id == post_id)
+        .group_by(Post.id, User.name)  # Group by post ID and author name
+        .first()
+    )
+
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    # Count total likes for the post
-    like_count = db.query(func.count(PostLike.user_id)).filter(PostLike.post_id == post_id).scalar()
-
-    # Check if the logged-in user liked the post
-    liked_by_user = False
-    if user_id:
-        liked_by_user = db.query(PostLike).filter(PostLike.post_id == post_id, PostLike.user_id == user_id).first() is not None
+    post_data, author_name, like_count, liked_by_user = post
 
     return PostResponse(
-        id=post.id,
-        course_id=post.course_id,
-        author_id=post.author_id,
-        title=post.title,
-        preview_md=post.preview_md,
-        content_md=post.content_md,
-        created_at=post.created_at,
+        id=post_data.id,
+        course_id=post_data.course_id,
+        author_id=post_data.author_id,
+        author_name=author_name,  # Return author name
+        title=post_data.title,
+        preview_md=post_data.preview_md,
+        content_md=post_data.content_md,
+        created_at=post_data.created_at,
         like_count=like_count,
         liked_by_user=liked_by_user
     )
+
 
 @app.get("/posts", response_model=list[PostResponse], dependencies=[Depends(verify_csrf)])
 def get_all_posts(
@@ -316,7 +325,7 @@ def get_all_posts(
     db: Session = Depends(get_db)
 ):
     """
-    Retrieves posts along with like counts and whether the user has liked them.
+    Retrieves posts along with like counts, author names, and whether the user has liked them.
     - Defaults to ordering by `created_at` (newest first).
     - If `sort_by_likes=true`, orders by like count instead.
     - If `limit` is provided, only the first `limit` posts are returned.
@@ -336,9 +345,11 @@ def get_all_posts(
     query = (
         db.query(
             Post,
+            User.name.label("author_name"),  # Fetch author name
             func.coalesce(subquery_like_count.c.like_count, 0).label("like_count"),
             exists().where(subquery_liked_by_user.c.post_id == Post.id).label("liked_by_user"),
         )
+        .join(User, User.id == Post.author_id)
         .outerjoin(subquery_like_count, Post.id == subquery_like_count.c.post_id)
     )
 
@@ -359,6 +370,7 @@ def get_all_posts(
             id=post.id,
             course_id=post.course_id,
             author_id=post.author_id,
+            author_name=author_name,  # Return author name
             title=post.title,
             preview_md=post.preview_md,
             content_md=post.content_md,
@@ -366,7 +378,7 @@ def get_all_posts(
             like_count=like_count,
             liked_by_user=liked_by_user
         )
-        for post, like_count, liked_by_user in posts
+        for post, author_name, like_count, liked_by_user in posts
     ]
 
 
