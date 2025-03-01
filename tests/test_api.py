@@ -215,3 +215,273 @@ def test_get_topics_with_courses(client: TestClient, db_session: Session, csrf_t
     course_names = {course["name"] for course in topic_found["courses"]}
     assert "Machine Learning Basics" in course_names
     assert "Deep Learning with PyTorch" in course_names
+
+def test_add_and_remove_favorite_course(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test adding and removing a course from favorites"""
+
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "test@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Machine Learning"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course under the topic
+    course_data = {"name": "Deep Learning", "description": "Learn Deep Learning", "topic_id": topic_id}
+    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
+    assert course_response.status_code == 200
+    course_id = course_response.json()["id"]
+
+    # Add course to favorites
+    favorite_response = client.post(
+        "/add_favorite_course",
+        params={"course_id": course_id},  
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert favorite_response.status_code == 200
+    assert favorite_response.json()["message"] == "Course added to favorites"
+
+    # Try adding the same course again (should fail)
+    duplicate_favorite_response = client.post(
+        "/add_favorite_course",  
+        params={"course_id": course_id}, 
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert duplicate_favorite_response.status_code == 400
+    assert duplicate_favorite_response.json()["detail"] == "Course already favorited"
+
+    # Remove course from favorites
+    remove_favorite_response = client.delete(
+        "/remove_favorite_course",  
+        params={"course_id": course_id}, 
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert remove_favorite_response.status_code == 200
+    assert remove_favorite_response.json()["message"] == "Course removed from favorites"
+
+    # Try removing again (should fail)
+    remove_favorite_fail_response = client.delete(
+        "/remove_favorite_course",  
+        params={"course_id": course_id}, 
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert remove_favorite_fail_response.status_code == 404
+    assert remove_favorite_fail_response.json()["detail"] == "Favorite course not found"
+
+
+def test_get_favorite_courses(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test retrieving a list of favorite courses for a user."""
+
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Web Development"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create two courses under the topic
+    course_data_1 = {
+        "name": "FastAPI Masterclass",
+        "description": "Learn FastAPI from scratch",
+        "topic_id": topic_id
+    }
+    course_response_1 = client.post("/create_course", json=course_data_1, headers={"CSRF-Token": csrf_token})
+    assert course_response_1.status_code == 200
+    course_id_1 = course_response_1.json()["id"]
+
+    course_data_2 = {
+        "name": "Advanced Python",
+        "description": "Deep dive into Python features",
+        "topic_id": topic_id
+    }
+    course_response_2 = client.post("/create_course", json=course_data_2, headers={"CSRF-Token": csrf_token})
+    assert course_response_2.status_code == 200
+    course_id_2 = course_response_2.json()["id"]
+
+    # Add courses to favorites
+    client.post("/add_favorite_course", params={"course_id": course_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    client.post("/add_favorite_course", params={"course_id": course_id_2}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+
+    # Fetch favorite courses
+    favorite_response = client.get("/favorite_courses", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    
+    assert favorite_response.status_code == 200
+    favorite_courses = favorite_response.json()
+    
+    assert len(favorite_courses) == 2
+    assert favorite_courses[0]["name"] in ["FastAPI Masterclass", "Advanced Python"]
+    assert favorite_courses[1]["name"] in ["FastAPI Masterclass", "Advanced Python"]
+
+
+def test_like_and_remove_like(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test liking and unliking a post."""
+    
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Backend Development"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course
+    course_data = {
+        "name": "FastAPI Masterclass",
+        "description": "Learn FastAPI from scratch",
+        "topic_id": topic_id
+    }
+    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
+    assert course_response.status_code == 200
+    course_id = course_response.json()["id"]
+
+    # Create a post
+    post_data = {
+        "course_id": course_id,
+        "author_id": user_id,
+        "title": "Introduction to FastAPI",
+        "preview_md": "What is FastAPI?",
+        "content_md": "FastAPI is a modern web framework for building APIs."
+    }
+    post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
+    assert post_response.status_code == 200
+    post_id = post_response.json()["id"]
+
+    # Like the post (using `params` instead of `json`)
+    like_response = client.post(
+        "/like_post", 
+        params={"post_id": post_id},
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert like_response.status_code == 200
+    assert like_response.json()["message"] == "Post liked successfully"
+
+    # Unlike the post (using `params` instead of `json`)
+    unlike_response = client.delete(
+        "/remove_like",
+        params={"post_id": post_id},
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+    assert unlike_response.status_code == 200
+    assert unlike_response.json()["message"] == "Like removed successfully"
+
+
+def test_get_post(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test fetching a post along with its like count and user like status."""
+    
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a second user (who won't like the post)
+    user_data2 = {
+        "id": str(uuid.uuid4()),
+        "email": "otheruser@example.com",
+        "userName": "otheruser",
+        "name": "Other User",
+        "imageUrl": "https://example.com/image2.jpg",
+        "is_admin": False
+    }
+    user_response2 = client.post("/create_user", json=user_data2, headers={"CSRF-Token": csrf_token})
+    assert user_response2.status_code == 200
+    other_user_id = user_response2.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Software Engineering"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course
+    course_data = {
+        "name": "REST API Development",
+        "description": "Learn to build APIs with FastAPI",
+        "topic_id": topic_id
+    }
+    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
+    assert course_response.status_code == 200
+    course_id = course_response.json()["id"]
+
+    # Create a post
+    post_data = {
+        "course_id": course_id,
+        "author_id": user_id,
+        "title": "Building APIs with FastAPI",
+        "preview_md": "Introduction to FastAPI",
+        "content_md": "This tutorial explains FastAPI in detail."
+    }
+    post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
+    assert post_response.status_code == 200
+    post_id = post_response.json()["id"]
+
+    # Add a like from the first user
+    client.post(
+        "/like_post",
+        params={"post_id": post_id},
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+
+    # Fetch the post **as the user who liked it**
+    response = client.get(f"/get_post/{post_id}", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["id"] == post_id
+    assert data["title"] == "Building APIs with FastAPI"
+    assert data["preview_md"] == "Introduction to FastAPI"
+    assert data["content_md"] == "This tutorial explains FastAPI in detail."
+    assert data["like_count"] == 1  # Post has one like
+    assert data["liked_by_user"] is True  # User liked it
+
+    # Fetch the post **as another user who didn't like it**
+    response = client.get(f"/get_post/{post_id}", headers={"CSRF-Token": csrf_token, "User-ID": other_user_id})
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["like_count"] == 1  # Total likes remain the same
+    assert data["liked_by_user"] is False  # This user didn't like the post
+
+

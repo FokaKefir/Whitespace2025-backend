@@ -31,7 +31,6 @@ class CourseResponse(CourseCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
-
 class PostCreate(BaseModel):
     course_id: Annotated[int, Field(title="Course ID", description="ID of the related course")]
     author_id: Annotated[str, Field(title="Author ID", description="User ID of the post author")]
@@ -40,7 +39,7 @@ class PostCreate(BaseModel):
     content_md: Annotated[str, Field(title="Post Content", min_length=10, max_length=5000)]
 
 
-class PostResponse(BaseModel):
+class PostAfterCreateResponse(BaseModel):
     id: str  
     course_id: int
     author_id: str
@@ -48,6 +47,19 @@ class PostResponse(BaseModel):
     preview_md: str
     content_md: str
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PostResponse(BaseModel):
+    id: str
+    course_id: int
+    author_id: str
+    title: str
+    preview_md: str
+    content_md: str
+    created_at: datetime
+    like_count: int  # Total number of likes
+    liked_by_user: bool  # Whether the logged-in user liked the post
 
     model_config = ConfigDict(from_attributes=True)
 
