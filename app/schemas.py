@@ -27,6 +27,7 @@ class CourseCreate(BaseModel):
 
 class CourseResponse(CourseCreate):
     id: Annotated[int, Field(title="Course ID", description="Unique identifier for the course")]
+    is_favorite: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,8 +78,10 @@ class CourseDetailResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    is_favorite: bool = False  
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class TopicWithCoursesResponse(BaseModel):

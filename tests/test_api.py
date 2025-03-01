@@ -166,17 +166,24 @@ def test_create_post(client: TestClient, db_session: Session, csrf_token: str = 
     assert data["content_md"] == post_data["content_md"]
 
 def test_get_topics_with_courses(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
-    """Test the `/topics_with_courses` endpoint"""
+    """Test the `/topics_with_courses` endpoint with favorite course status"""
     
-    # Create a topic
-    topic_data = {
-        "name": "Artificial Intelligence"
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
     }
-    topic_response = client.post(
-        "/create_topic",
-        json=topic_data,
-        headers={"CSRF-Token": csrf_token}
-    )
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Artificial Intelligence"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
     assert topic_response.status_code == 200
     topic_id = topic_response.json()["id"]
 
@@ -198,8 +205,14 @@ def test_get_topics_with_courses(client: TestClient, db_session: Session, csrf_t
     assert course_response_1.status_code == 200
     assert course_response_2.status_code == 200
 
+    course_id_1 = course_response_1.json()["id"]
+    course_id_2 = course_response_2.json()["id"]
+
+    # Add one course to favorites
+    client.post("/add_favorite_course", params={"course_id": course_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+
     # Fetch topics with courses
-    response = client.get("/topics_with_courses", headers={"CSRF-Token": csrf_token})
+    response = client.get("/topics_with_courses", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
     assert response.status_code == 200
 
     data = response.json()
@@ -211,10 +224,15 @@ def test_get_topics_with_courses(client: TestClient, db_session: Session, csrf_t
     assert topic_found is not None
     assert topic_found["name"] == topic_data["name"]
     
-    # Check if the courses are listed correctly
-    course_names = {course["name"] for course in topic_found["courses"]}
-    assert "Machine Learning Basics" in course_names
-    assert "Deep Learning with PyTorch" in course_names
+    # Check if the courses are listed correctly and have the correct favorite status
+    course_map = {course["id"]: course for course in topic_found["courses"]}
+    
+    assert course_id_1 in course_map
+    assert course_id_2 in course_map
+    
+    assert course_map[course_id_1]["is_favorite"] is True  # This one was added to favorites
+    assert course_map[course_id_2]["is_favorite"] is False  # This one was not favorited
+
 
 def test_add_and_remove_favorite_course(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
     """Test adding and removing a course from favorites"""
@@ -282,7 +300,7 @@ def test_add_and_remove_favorite_course(client: TestClient, db_session: Session,
 
 
 def test_get_favorite_courses(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
-    """Test retrieving a list of favorite courses for a user."""
+    """Test retrieving a list of favorite courses for a user and checking 'is_favorite' field."""
 
     # Create a user
     user_data = {
@@ -333,8 +351,18 @@ def test_get_favorite_courses(client: TestClient, db_session: Session, csrf_toke
     favorite_courses = favorite_response.json()
     
     assert len(favorite_courses) == 2
-    assert favorite_courses[0]["name"] in ["FastAPI Masterclass", "Advanced Python"]
-    assert favorite_courses[1]["name"] in ["FastAPI Masterclass", "Advanced Python"]
+
+    course_map = {course["id"]: course for course in favorite_courses}
+    
+    # Check if favorite courses exist and have correct `is_favorite` field
+    assert course_id_1 in course_map
+    assert course_id_2 in course_map
+    assert course_map[course_id_1]["is_favorite"] is True
+    assert course_map[course_id_2]["is_favorite"] is True
+
+    assert course_map[course_id_1]["name"] == "FastAPI Masterclass"
+    assert course_map[course_id_2]["name"] == "Advanced Python"
+
 
 
 def test_like_and_remove_like(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):

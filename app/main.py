@@ -119,9 +119,39 @@ def create_topic(topic_data: TopicCreate, db: Session = Depends(get_db)) -> Topi
     return new_topic
 
 @app.get("/topics_with_courses", response_model=list[TopicWithCoursesResponse], dependencies=[Depends(verify_csrf)])
-def get_topics_with_courses(db: Session = Depends(get_db)):
+def get_topics_with_courses(user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+    """
+    Fetch topics along with courses, marking whether a course is favorited by the user.
+    """
+
+    # Get the user's favorite courses
+    favorite_course_ids = {
+        fav.course_id for fav in db.query(FavoriteCourse).filter(FavoriteCourse.user_id == user_id).all()
+    }
+
+    # Fetch all topics with courses
     topics = db.query(Topic).all()
-    return topics
+    
+    # Format response
+    topics_with_courses = []
+    for topic in topics:
+        topic_data = TopicWithCoursesResponse(
+            id=topic.id,
+            name=topic.name,
+            courses=[
+                CourseDetailResponse(
+                    id=course.id,
+                    name=course.name,
+                    description=course.description,
+                    is_favorite=course.id in favorite_course_ids  # Mark favorite courses
+                )
+                for course in topic.courses  # Fetch courses for each topic
+            ]
+        )
+        topics_with_courses.append(topic_data)
+
+    return topics_with_courses
+
 
 @app.post("/add_favorite_course", dependencies=[Depends(verify_csrf)])
 def add_favorite_course(
@@ -174,13 +204,22 @@ def remove_favorite_course(
 
 @app.get("/favorite_courses", response_model=list[CourseResponse], dependencies=[Depends(verify_csrf)])
 def get_favorite_courses(user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
-    """Returns a list of courses that are favorited by the user."""
+    """Returns a list of courses that are favorited by the user, marking them explicitly as favorites."""
     
     favorite_courses = db.query(Course).join(FavoriteCourse, Course.id == FavoriteCourse.course_id).filter(
         FavoriteCourse.user_id == user_id
     ).all()
 
-    return favorite_courses
+    return [
+        CourseResponse(
+            id=course.id,
+            name=course.name,
+            description=course.description,
+            topic_id=course.topic_id,
+            is_favorite=True  
+        )
+        for course in favorite_courses
+    ]
 
 
 @app.post("/like_post", dependencies=[Depends(verify_csrf)])
