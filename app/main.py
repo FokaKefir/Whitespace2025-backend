@@ -260,28 +260,44 @@ def get_post(
     )
 
 @app.get("/posts", response_model=list[PostResponse], dependencies=[Depends(verify_csrf)])
-def get_all_posts(user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+def get_all_posts(
+    user_id: str = Header(..., title="User ID"),
+    sort_by_likes: bool = Query(False, description="Sort posts by like count"),
+    db: Session = Depends(get_db)
+):
     """
     Retrieves all posts along with like counts and whether the user has liked them.
+    Defaults to ordering by `created_at` (newest first).
+    If `sort_by_likes=true`, orders by like count instead.
     """
-    
+
+    # Subquery for like count
     subquery_like_count = db.query(
         PostLike.post_id, func.count(PostLike.user_id).label("like_count")
     ).group_by(PostLike.post_id).subquery()
 
+    # Subquery for checking if the user has liked a post
     subquery_liked_by_user = db.query(
         PostLike.post_id
     ).filter(PostLike.user_id == user_id).subquery()
 
-    posts = (
+    # Query for posts
+    query = (
         db.query(
             Post,
             func.coalesce(subquery_like_count.c.like_count, 0).label("like_count"),
             exists().where(subquery_liked_by_user.c.post_id == Post.id).label("liked_by_user"),
         )
         .outerjoin(subquery_like_count, Post.id == subquery_like_count.c.post_id)
-        .all()
     )
+
+    # Sorting logic
+    if sort_by_likes:
+        query = query.order_by(func.coalesce(subquery_like_count.c.like_count, 0).desc())  # Order by likes
+    else:
+        query = query.order_by(Post.created_at.desc())  # Default: order by timestamp
+
+    posts = query.all()
 
     return [
         PostResponse(

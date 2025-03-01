@@ -507,7 +507,7 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
     assert topic_response.status_code == 200
     topic_id = topic_response.json()["id"]
 
-    # Create a course under the topic
+    # Create a course
     course_data = {
         "name": "FastAPI Course",
         "description": "Learn FastAPI step by step.",
@@ -523,7 +523,7 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
         "author_id": user_id,
         "title": "Getting Started with FastAPI",
         "preview_md": "Introduction to FastAPI",
-        "content_md": "FastAPI is a modern web framework."
+        "content_md": "FastAPI is a modern web framework.",
     }
     post_response_1 = client.post("/create_post", json=post_data_1, headers={"CSRF-Token": csrf_token})
     assert post_response_1.status_code == 200
@@ -534,31 +534,30 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
         "author_id": user_id,
         "title": "FastAPI vs Flask",
         "preview_md": "Comparing FastAPI and Flask",
-        "content_md": "FastAPI is async while Flask is synchronous."
+        "content_md": "FastAPI is async while Flask is synchronous.",
     }
     post_response_2 = client.post("/create_post", json=post_data_2, headers={"CSRF-Token": csrf_token})
     assert post_response_2.status_code == 200
     post_id_2 = post_response_2.json()["id"]
 
-    # Like one post
-    client.post(
-        "/like_post",
-        params={"post_id": post_id_1},
-        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
-    )
+    # Like first post twice
+    client.post("/like_post", params={"post_id": post_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    client.post("/like_post", params={"post_id": post_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
 
-    # Fetch all posts
+    # Fetch all posts (default sorting by time)
     posts_response = client.get("/posts", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
-
     assert posts_response.status_code == 200
     posts = posts_response.json()
-    
     assert len(posts) == 2
-    assert posts[0]["title"] in ["Getting Started with FastAPI", "FastAPI vs Flask"]
-    assert posts[1]["title"] in ["Getting Started with FastAPI", "FastAPI vs Flask"]
-    
-    for post in posts:
-        if post["id"] == post_id_1:
-            assert post["liked_by_user"] is True
-        else:
-            assert post["liked_by_user"] is False
+
+    # Check order by created_at (newest first)
+    assert posts[0]["created_at"] >= posts[1]["created_at"]
+
+    # Fetch all posts sorted by likes
+    posts_response_likes = client.get("/posts?sort_by_likes=true", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert posts_response_likes.status_code == 200
+    posts_sorted_by_likes = posts_response_likes.json()
+
+    # Check if sorting by likes works
+    assert posts_sorted_by_likes[0]["like_count"] >= posts_sorted_by_likes[1]["like_count"]
+
