@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, exists
 from app.database import SessionLocal
 from app.models import *
 from app.schemas import *
@@ -259,3 +259,41 @@ def get_post(
         liked_by_user=liked_by_user
     )
 
+@app.get("/posts", response_model=list[PostResponse], dependencies=[Depends(verify_csrf)])
+def get_all_posts(user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
+    """
+    Retrieves all posts along with like counts and whether the user has liked them.
+    """
+    
+    subquery_like_count = db.query(
+        PostLike.post_id, func.count(PostLike.user_id).label("like_count")
+    ).group_by(PostLike.post_id).subquery()
+
+    subquery_liked_by_user = db.query(
+        PostLike.post_id
+    ).filter(PostLike.user_id == user_id).subquery()
+
+    posts = (
+        db.query(
+            Post,
+            func.coalesce(subquery_like_count.c.like_count, 0).label("like_count"),
+            exists().where(subquery_liked_by_user.c.post_id == Post.id).label("liked_by_user"),
+        )
+        .outerjoin(subquery_like_count, Post.id == subquery_like_count.c.post_id)
+        .all()
+    )
+
+    return [
+        PostResponse(
+            id=post.id,
+            course_id=post.course_id,
+            author_id=post.author_id,
+            title=post.title,
+            preview_md=post.preview_md,
+            content_md=post.content_md,
+            created_at=post.created_at,
+            like_count=like_count,
+            liked_by_user=liked_by_user
+        )
+        for post, like_count, liked_by_user in posts
+    ]

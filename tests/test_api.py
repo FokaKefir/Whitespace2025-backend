@@ -485,3 +485,80 @@ def test_get_post(client: TestClient, db_session: Session, csrf_token: str = CSR
     assert data["liked_by_user"] is False  # This user didn't like the post
 
 
+def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test retrieving all posts along with like counts and user like status."""
+
+    # Create a user
+    user_data = {
+        "id": str(uuid.uuid4()),
+        "email": "testuser@example.com",
+        "userName": "testuser",
+        "name": "Test User",
+        "imageUrl": "https://example.com/image.jpg",
+        "is_admin": False
+    }
+    user_response = client.post("/create_user", json=user_data, headers={"CSRF-Token": csrf_token})
+    assert user_response.status_code == 200
+    user_id = user_response.json()["id"]
+
+    # Create a topic
+    topic_data = {"name": "Web Development"}
+    topic_response = client.post("/create_topic", json=topic_data, headers={"CSRF-Token": csrf_token})
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create a course under the topic
+    course_data = {
+        "name": "FastAPI Course",
+        "description": "Learn FastAPI step by step.",
+        "topic_id": topic_id
+    }
+    course_response = client.post("/create_course", json=course_data, headers={"CSRF-Token": csrf_token})
+    assert course_response.status_code == 200
+    course_id = course_response.json()["id"]
+
+    # Create two posts
+    post_data_1 = {
+        "course_id": course_id,
+        "author_id": user_id,
+        "title": "Getting Started with FastAPI",
+        "preview_md": "Introduction to FastAPI",
+        "content_md": "FastAPI is a modern web framework."
+    }
+    post_response_1 = client.post("/create_post", json=post_data_1, headers={"CSRF-Token": csrf_token})
+    assert post_response_1.status_code == 200
+    post_id_1 = post_response_1.json()["id"]
+
+    post_data_2 = {
+        "course_id": course_id,
+        "author_id": user_id,
+        "title": "FastAPI vs Flask",
+        "preview_md": "Comparing FastAPI and Flask",
+        "content_md": "FastAPI is async while Flask is synchronous."
+    }
+    post_response_2 = client.post("/create_post", json=post_data_2, headers={"CSRF-Token": csrf_token})
+    assert post_response_2.status_code == 200
+    post_id_2 = post_response_2.json()["id"]
+
+    # Like one post
+    client.post(
+        "/like_post",
+        params={"post_id": post_id_1},
+        headers={"CSRF-Token": csrf_token, "User-ID": user_id}
+    )
+
+    # Fetch all posts
+    posts_response = client.get("/posts", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+
+    assert posts_response.status_code == 200
+    posts = posts_response.json()
+    
+    assert len(posts) == 2
+    assert posts[0]["title"] in ["Getting Started with FastAPI", "FastAPI vs Flask"]
+    assert posts[1]["title"] in ["Getting Started with FastAPI", "FastAPI vs Flask"]
+    
+    for post in posts:
+        if post["id"] == post_id_1:
+            assert post["liked_by_user"] is True
+        else:
+            assert post["liked_by_user"] is False
