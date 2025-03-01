@@ -112,6 +112,7 @@ class CommentResponse(BaseModel):
     id: int
     post_id: str
     user_id: str
+    user_name: str  
     content: str
     created_at: datetime
-    is_written_by_user: bool  # Flag to check if the comment belongs to the user
+    is_written_by_user: bool  

@@ -424,14 +424,19 @@ def add_comment(comment_data: CommentCreate, user_id: str = Header(..., title="U
     db.commit()
     db.refresh(new_comment)
 
+    # Fetch user_name from the User table
+    user_name = db.query(User.userName).filter(User.id == user_id).scalar()
+
     return CommentResponse(
         id=new_comment.id,
         post_id=new_comment.post_id,
         user_id=new_comment.user_id,
+        user_name=user_name,  # Include user_name in the response
         content=new_comment.content,
         created_at=new_comment.created_at,
         is_written_by_user=True  # Since the user just created it, they must be the author
     )
+
 
 
 @app.delete("/remove_comment", dependencies=[Depends(verify_csrf)])
@@ -450,21 +455,41 @@ def remove_comment(comment_id: int = Query(..., title="Comment ID"), user_id: st
 
 
 @app.get("/get_comments", response_model=list[CommentResponse], dependencies=[Depends(verify_csrf)])
-def get_comments(post_id: str = Query(..., title="Post ID"), user_id: str = Header(..., title="User ID"), db: Session = Depends(get_db)):
-    """Retrieve all comments for a given post, marking if they are written by the user."""
+def get_comments(
+    post_id: str = Query(..., title="Post ID"),
+    user_id: str = Header(..., title="User ID"),
+    db: Session = Depends(get_db)
+):
+    """Retrieve all comments for a given post, including user_name for each comment author."""
 
     validate_id(db, Post, "id", post_id, "Post not found")
 
-    comments = db.query(PostComment).filter(PostComment.post_id == post_id).all()
+    # Fetch comments along with user_name by joining PostComment with User
+    comments = (
+        db.query(
+            PostComment.id,
+            PostComment.post_id,
+            PostComment.user_id,
+            User.userName.label("user_name"),  # Get username
+            PostComment.content,
+            PostComment.created_at
+        )
+        .join(User, User.id == PostComment.user_id)  # Join User table to get user_name
+        .filter(PostComment.post_id == post_id)
+        .order_by(PostComment.created_at.asc())  # Order by timestamp, oldest first
+        .all()
+    )
 
+    # Format response with username and is_written_by_user flag
     return [
         CommentResponse(
             id=comment.id,
             post_id=comment.post_id,
             user_id=comment.user_id,
+            user_name=comment.user_name,  # Extract user_name from query
             content=comment.content,
             created_at=comment.created_at,
-            is_written_by_user=(comment.user_id == user_id)  # True if the comment belongs to the user
+            is_written_by_user=(comment.user_id == user_id)  # True if the comment belongs to the requester
         )
         for comment in comments
     ]
