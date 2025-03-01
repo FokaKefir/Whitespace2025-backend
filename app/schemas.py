@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, HttpUrl, Field, ConfigDict
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated, Optional, List
 
 
 class UserCreate(BaseModel):
@@ -61,3 +61,17 @@ class TopicResponse(TopicCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CourseDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicWithCoursesResponse(BaseModel):
+    id: int
+    name: str
+    courses: List[CourseDetailResponse]  # Updated reference to the new course schema
+
+    model_config = ConfigDict(from_attributes=True)

@@ -106,3 +106,8 @@ def create_topic(topic_data: TopicCreate, db: Session = Depends(get_db)) -> Topi
     db.refresh(new_topic)  # Reload the object to get the generated ID
 
     return new_topic
+
+@app.get("/topics_with_courses", response_model=list[TopicWithCoursesResponse], dependencies=[Depends(verify_csrf)])
+def get_topics_with_courses(db: Session = Depends(get_db)):
+    topics = db.query(Topic).all()
+    return topics

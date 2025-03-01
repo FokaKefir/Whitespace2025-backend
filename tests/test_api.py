@@ -164,3 +164,54 @@ def test_create_post(client: TestClient, db_session: Session, csrf_token: str = 
     assert data["title"] == post_data["title"]  
     assert data["preview_md"] == post_data["preview_md"]
     assert data["content_md"] == post_data["content_md"]
+
+def test_get_topics_with_courses(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
+    """Test the `/topics_with_courses` endpoint"""
+    
+    # Create a topic
+    topic_data = {
+        "name": "Artificial Intelligence"
+    }
+    topic_response = client.post(
+        "/create_topic",
+        json=topic_data,
+        headers={"CSRF-Token": csrf_token}
+    )
+    assert topic_response.status_code == 200
+    topic_id = topic_response.json()["id"]
+
+    # Create courses under the topic
+    course_data_1 = {
+        "name": "Machine Learning Basics",
+        "description": "Introduction to ML concepts",
+        "topic_id": topic_id
+    }
+    course_data_2 = {
+        "name": "Deep Learning with PyTorch",
+        "description": "Building deep neural networks",
+        "topic_id": topic_id
+    }
+
+    course_response_1 = client.post("/create_course", json=course_data_1, headers={"CSRF-Token": csrf_token})
+    course_response_2 = client.post("/create_course", json=course_data_2, headers={"CSRF-Token": csrf_token})
+
+    assert course_response_1.status_code == 200
+    assert course_response_2.status_code == 200
+
+    # Fetch topics with courses
+    response = client.get("/topics_with_courses", headers={"CSRF-Token": csrf_token})
+    assert response.status_code == 200
+
+    data = response.json()
+    
+    # Check if the topic is in the response
+    assert len(data) > 0
+    topic_found = next((topic for topic in data if topic["id"] == topic_id), None)
+    
+    assert topic_found is not None
+    assert topic_found["name"] == topic_data["name"]
+    
+    # Check if the courses are listed correctly
+    course_names = {course["name"] for course in topic_found["courses"]}
+    assert "Machine Learning Basics" in course_names
+    assert "Deep Learning with PyTorch" in course_names
