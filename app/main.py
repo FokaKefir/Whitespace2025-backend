@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, exists
@@ -23,6 +24,15 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE)
     allow_headers=["*"],  # Allow all headers (including `X-CSRF-Token`)
 )
+
+BLACKLISTED_IPS = ["111.22.236.7", "178.211.139.120", "130.61.85.118"]
+
+@app.middleware("http")
+async def block_bad_ips(request, call_next):
+    client_ip = request.client.host
+    if client_ip in BLACKLISTED_IPS:
+        return JSONResponse(content={"detail": "Blocked"}, status_code=403)
+    return await call_next(request)
 
 CSRF_TOKEN = "lofasz"
 
@@ -263,12 +273,14 @@ def get_post(
 def get_all_posts(
     user_id: str = Header(..., title="User ID"),
     sort_by_likes: bool = Query(False, description="Sort posts by like count"),
+    limit: int = Query(None, description="Limit the number of returned posts"),
     db: Session = Depends(get_db)
 ):
     """
-    Retrieves all posts along with like counts and whether the user has liked them.
-    Defaults to ordering by `created_at` (newest first).
-    If `sort_by_likes=true`, orders by like count instead.
+    Retrieves posts along with like counts and whether the user has liked them.
+    - Defaults to ordering by `created_at` (newest first).
+    - If `sort_by_likes=true`, orders by like count instead.
+    - If `limit` is provided, only the first `limit` posts are returned.
     """
 
     # Subquery for like count
@@ -296,6 +308,10 @@ def get_all_posts(
         query = query.order_by(func.coalesce(subquery_like_count.c.like_count, 0).desc())  # Order by likes
     else:
         query = query.order_by(Post.created_at.desc())  # Default: order by timestamp
+
+    # Apply limit if provided
+    if limit is not None:
+        query = query.limit(limit)
 
     posts = query.all()
 

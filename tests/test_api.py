@@ -486,7 +486,7 @@ def test_get_post(client: TestClient, db_session: Session, csrf_token: str = CSR
 
 
 def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str = CSRF_TOKEN):
-    """Test retrieving all posts along with like counts and user like status."""
+    """Test retrieving all posts with sorting and limit options."""
 
     # Create a user
     user_data = {
@@ -517,43 +517,34 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
     assert course_response.status_code == 200
     course_id = course_response.json()["id"]
 
-    # Create two posts
-    post_data_1 = {
-        "course_id": course_id,
-        "author_id": user_id,
-        "title": "Getting Started with FastAPI",
-        "preview_md": "Introduction to FastAPI",
-        "content_md": "FastAPI is a modern web framework.",
-    }
-    post_response_1 = client.post("/create_post", json=post_data_1, headers={"CSRF-Token": csrf_token})
-    assert post_response_1.status_code == 200
-    post_id_1 = post_response_1.json()["id"]
+    # Create multiple posts
+    post_ids = []
+    for i in range(5):
+        post_data = {
+            "course_id": course_id,
+            "author_id": user_id,
+            "title": f"Post {i+1}",
+            "preview_md": f"Preview {i+1} one two three",
+            "content_md": f"Content of post {i+1}",
+        }
+        post_response = client.post("/create_post", json=post_data, headers={"CSRF-Token": csrf_token})
+        assert post_response.status_code == 200
+        post_ids.append(post_response.json()["id"])
 
-    post_data_2 = {
-        "course_id": course_id,
-        "author_id": user_id,
-        "title": "FastAPI vs Flask",
-        "preview_md": "Comparing FastAPI and Flask",
-        "content_md": "FastAPI is async while Flask is synchronous.",
-    }
-    post_response_2 = client.post("/create_post", json=post_data_2, headers={"CSRF-Token": csrf_token})
-    assert post_response_2.status_code == 200
-    post_id_2 = post_response_2.json()["id"]
-
-    # Like first post twice
-    client.post("/like_post", params={"post_id": post_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
-    client.post("/like_post", params={"post_id": post_id_1}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    # Like the first post twice
+    client.post("/like_post", params={"post_id": post_ids[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    client.post("/like_post", params={"post_id": post_ids[0]}, headers={"CSRF-Token": csrf_token, "User-ID": user_id})
 
     # Fetch all posts (default sorting by time)
     posts_response = client.get("/posts", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
     assert posts_response.status_code == 200
     posts = posts_response.json()
-    assert len(posts) == 2
+    assert len(posts) == 5
 
     # Check order by created_at (newest first)
     assert posts[0]["created_at"] >= posts[1]["created_at"]
 
-    # Fetch all posts sorted by likes
+    # Fetch posts sorted by likes
     posts_response_likes = client.get("/posts?sort_by_likes=true", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
     assert posts_response_likes.status_code == 200
     posts_sorted_by_likes = posts_response_likes.json()
@@ -561,3 +552,8 @@ def test_get_all_posts(client: TestClient, db_session: Session, csrf_token: str 
     # Check if sorting by likes works
     assert posts_sorted_by_likes[0]["like_count"] >= posts_sorted_by_likes[1]["like_count"]
 
+    # Fetch only 3 posts (limit)
+    posts_response_limited = client.get("/posts?limit=3", headers={"CSRF-Token": csrf_token, "User-ID": user_id})
+    assert posts_response_limited.status_code == 200
+    posts_limited = posts_response_limited.json()
+    assert len(posts_limited) == 3
