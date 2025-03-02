@@ -37,7 +37,7 @@ class PostCreate(BaseModel):
     author_id: Annotated[str, Field(title="Author ID", description="User ID of the post author")]
     title: Annotated[str, Field(title="Title of Post", min_length=3, max_length=100)]
     preview_md: Annotated[str, Field(title="Preview Content", min_length=10, max_length=500)]
-    content_md: Annotated[str, Field(title="Post Content", min_length=10, max_length=5000)]
+    content_md: Annotated[str, Field(title="Post Content", min_length=10, max_length=25000)]
     
     @field_validator("course_id")
     def validate_course(cls, v):

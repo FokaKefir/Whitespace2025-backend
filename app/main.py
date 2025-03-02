@@ -10,6 +10,7 @@ from app.schemas import *
 from app.gemini import *
 import json
 import asyncio
+import re
 import os
 
 # FastAPI app
@@ -548,11 +549,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Run the AI model in a separate thread to avoid blocking the event loop
                 response = await asyncio.to_thread(model.generate_content, ai_prompt)
 
+                # Clean response by removing extra newlines
+                cleaned_response = re.sub(r'\n+', '\n', response.text).strip()
+
                 # Store conversation
                 chat_sessions[session_id].append(f"User: {user_prompt}")
-                chat_sessions[session_id].append(f"AI: {response.text}")
+                chat_sessions[session_id].append(f"AI: {cleaned_response}")
 
-                await websocket.send_text(response.text)
+                await websocket.send_text(cleaned_response)
             except json.JSONDecodeError:
                 await websocket.send_text("Error: Invalid JSON format.")
     except WebSocketDisconnect:
