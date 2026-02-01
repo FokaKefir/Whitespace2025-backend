@@ -220,9 +220,6 @@ Results indicated **promising acceptance** with clear directions for future deve
 
 Developed by a team of three during a 48-hour hackathon (2025)
 
-## 📄 License
-
-[Add your license here]
 
 ## 🙏 Acknowledgments
 
@@ -232,4 +229,4 @@ Developed by a team of three during a 48-hour hackathon (2025)
 
 ---
 
-**Note:** This backend API is designed to work with the React frontend. Ensure both services are running for full functionality.
+**Note:** This backend API is designed to work with the React frontend available at [https://github.com/Salat-Tamas/whitespac3](https://github.com/Salat-Tamas/whitespac3). Ensure both services are running for full functionality.
